@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-950 text-slate-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DFA Visualizer - Router Packet Filtering (Prefix 101)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    code, pre, .font-mono { font-family: 'Fira Code', monospace; }
+    
+    .state-node { transition: all 0.3s ease; }
+    .state-node.active { filter: drop-shadow(0 0 12px rgba(59, 130, 246, 0.8)); }
+    .state-node.accepted { filter: drop-shadow(0 0 14px rgba(34, 197, 94, 0.9)); }
+    .state-node.rejected { filter: drop-shadow(0 0 14px rgba(239, 68, 68, 0.9)); }
+    
+    .transition-path { transition: stroke 0.3s ease, stroke-width 0.3s ease; }
+    .transition-path.active { stroke: #3b82f6; stroke-width: 3.5; }
+
+    @keyframes pulse-ring {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.1); opacity: 0.4; }
+      100% { transform: scale(0.95); opacity: 0.8; }
+    }
+    .pulse-glow { animation: pulse-ring 2s infinite ease-in-out; }
+  </style>
+</head>
+<body class="h-full flex flex-col justify-between overflow-x-hidden antialiased">
+
+  <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center font-bold text-white shadow-lg shadow-blue-500/20">
+          DFA
+        </div>
+        <div>
+          <h1 class="text-lg font-bold tracking-tight text-white leading-tight">Packet Router Filter</h1>
+          <p class="text-xs text-slate-400">Accepts Binary Strings Starting with <span class="text-blue-400 font-mono font-bold">101</span></p>
+        </div>
+      </div>
+      <div class="flex items-center space-x-2">
+        <button onclick="scrollToSection('theory-section')" class="px-3 py-1.5 text-xs font-medium rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition">
+          Formal Spec
+        </button>
+        <button onclick="scrollToSection('jflap-section')" class="px-3 py-1.5 text-xs font-medium rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition">
+          JFLAP XML
+        </button>
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5 animate-pulse"></span> Complete DFA
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow w-full space-y-8">
+
+    <!-- Problem Context Banner -->
+    <section class="p-6 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900/90 to-indigo-950/40 border border-slate-800 relative overflow-hidden shadow-xl">
+      <div class="max-w-3xl space-y-2 relative z-10">
+        <span class="text-xs font-semibold tracking-wider uppercase text-indigo-400">Automata & Formal Languages</span>
+        <h2 class="text-2xl font-extrabold text-white">Network Router Packet Inspector</h2>
+        <p class="text-slate-300 text-sm leading-relaxed">
+          A network router inspects incoming binary packet headers over alphabet <code class="bg-slate-800 px-1.5 py-0.5 rounded text-indigo-300 font-mono">Σ = {0, 1}</code>. A packet is forwarded <strong>only if its header begins with the prefix <span class="text-emerald-400 font-bold">101</span></strong>. Otherwise, it is routed to dead state <code class="bg-slate-800 px-1.5 py-0.5 rounded text-rose-400 font-mono">qd</code> and discarded.
+        </p>
+      </div>
+      <div class="absolute -right-10 -bottom-10 w-60 h-60 bg-blue-600/10 rounded-full blur-3xl pointer-events-none"></div>
+    </section>
+
+    <!-- Interactive Visualizer & Controller Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+
+      <!-- Left Column: Dynamic Interactive SVG Diagram (7 cols) -->
+      <section class="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col justify-between shadow-xl relative min-h-[420px]">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center space-x-2">
+            <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            <h3 class="font-bold text-slate-100 text-sm uppercase tracking-wide">State Transition Graph</h3>
+          </div>
+          <div class="flex items-center space-x-3 text-xs text-slate-400">
+            <span class="flex items-center"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500 mr-1.5"></span> Final (q3)</span>
+            <span class="flex items-center"><span class="w-2.5 h-2.5 rounded-full bg-rose-500 mr-1.5"></span> Dead (qd)</span>
+          </div>
+        </div>
+
+        <!-- SVG Automaton Canvas -->
+        <div class="w-full h-full flex-grow flex items-center justify-center relative bg-slate-950/50 rounded-xl border border-slate-800/60 p-4">
+          <svg id="dfa-svg" class="w-full h-72" viewBox="0 0 650 360">
+            <defs>
+              <!-- Arrowhead Definition -->
+              <marker id="arrow" viewBox="0 0 10 10" refX="28" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b" />
+              </marker>
+              <marker id="arrow-active" viewBox="0 0 10 10" refX="28" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="#3b82f6" />
+              </marker>
+            </defs>
+
+            <!-- Initial State Arrow -->
+            <path d="M 40 150 L 80 150" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)" />
+
+            <!-- Transitions Paths -->
+            <!-- q0 -> q1 ('1') -->
+            <path id="tr-0-1" d="M 120 150 L 230 150" class="transition-path" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+            <text x="175" y="142" fill="#94a3b8" font-size="14" font-weight="bold" text-anchor="middle">1</text>
+
+            <!-- q0 -> qd ('0') -->
+            <path id="tr-0-4" d="M 110 170 Q 150 280 305 300" class="transition-path" stroke="#475569" stroke-width="2" marker-end="url(#arrow)" fill="none"/>
+            <text x="180" y="245" fill="#94a3b8" font-size="14" font-weight="bold" text-anchor="middle">0</text>
+
+            <!-- q1 -> q2 ('0') -->
+            <path id="tr-1-2" d="M 270 150 L 380 150" class="transition-path" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+            <text x="325" y="142" fill="#94a3b8" font-size="14" font-weight="bold" text-anchor="middle">0</text>
+
+            <!-- q1 -> qd ('1') -->
+            <path id="tr-1-4" d="M 260 170 L 315 280" class="transition-path" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+            <text x="278" y="225" fill="#94a3b8" font-size="14" font-weight="bold" text-anchor="middle">1</text>
+
+            <!-- q2 -> q3 ('1') -->
+            <path id="tr-2-3" d="M 420 150 L 530 150" class="transition-path" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+            <text x="475" y="142" fill="#94a3b8" font-size="14" font-weight="bold" text-anchor="middle">1</text>
+
+            <!-- q2 -> qd ('0') -->
+            <path id="tr-2-4" d="M 390 170 L 335 280" class="transition-path" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+            <text x="372" y="225" fill="#94a3b8" font-size="14" font-weight="bold" text-anchor="middle">0</text>
+
+            <!-- q3 -> q3 Loop ('0, 1') -->
+            <path id="tr-3-3" d="M 545 130 C 530 80, 570 80, 555 130" class="transition-path" stroke="#475569" stroke-width="2" marker-end="url(#arrow)" fill="none"/>
+            <text x="550" y="80" fill="#94a3b8" font-size="14" font-weight="bold" text-anchor="middle">0, 1</text>
+
+            <!-- qd -> qd Loop ('0, 1') -->
+            <path id="tr-4-4" d="M 315 320 C 280 365, 370 365, 335 320" class="transition-path" stroke="#475569" stroke-width="2" marker-end="url(#arrow)" fill="none"/>
+            <text x="325" y="360" fill="#94a3b8" font-size="14" font-weight="bold" text-anchor="middle">0, 1</text>
+
+            <!-- States Group -->
+            <!-- State q0 -->
+            <g id="node-0" class="state-node" transform="translate(100, 150)">
+              <circle r="22" fill="#1e293b" stroke="#64748b" stroke-width="2" id="circle-0"/>
+              <text y="5" fill="#e2e8f0" font-size="14" font-weight="bold" text-anchor="middle">q0</text>
+            </g>
+
+            <!-- State q1 -->
+            <g id="node-1" class="state-node" transform="translate(250, 150)">
+              <circle r="22" fill="#1e293b" stroke="#64748b" stroke-width="2" id="circle-1"/>
+              <text y="5" fill="#e2e8f0" font-size="14" font-weight="bold" text-anchor="middle">q1</text>
+            </g>
+
+            <!-- State q2 -->
+            <g id="node-2" class="state-node" transform="translate(400, 150)">
+              <circle r="22" fill="#1e293b" stroke="#64748b" stroke-width="2" id="circle-2"/>
+              <text y="5" fill="#e2e8f0" font-size="14" font-weight="bold" text-anchor="middle">q2</text>
+            </g>
+
+            <!-- State q3 (Accept State) -->
+            <g id="node-3" class="state-node" transform="translate(550, 150)">
+              <circle r="25" fill="#1e293b" stroke="#10b981" stroke-width="2"/>
+              <circle r="20" fill="#1e293b" stroke="#10b981" stroke-width="1.5" id="circle-3"/>
+              <text y="5" fill="#10b981" font-size="14" font-weight="bold" text-anchor="middle">q3</text>
+            </g>
+
+            <!-- State qd (Dead State) -->
+            <g id="node-4" class="state-node" transform="translate(325, 300)">
+              <circle r="22" fill="#1e293b" stroke="#f43f5e" stroke-width="2" id="circle-4"/>
+              <text y="5" fill="#f43f5e" font-size="14" font-weight="bold" text-anchor="middle">qd</text>
+            </g>
+          </svg>
+        </div>
+
+        <div id="status-message" class="mt-4 p-3 rounded-xl bg-slate-950/80 border border-slate-800 text-xs font-mono text-slate-300 flex items-center justify-between">
+          <span>Current State: <strong id="current-state-display" class="text-blue-400">q0</strong></span>
+          <span id="decision-badge" class="px-2 py-0.5 rounded text-[11px] bg-slate-800 text-slate-400 font-semibold uppercase">Awaiting Input</span>
+        </div>
+      </section>
+
+      <!-- Right Column: Interactive Simulator & Step Controls (5 cols) -->
+      <section class="lg:col-span-5 bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col justify-between shadow-xl space-y-6">
+        <div>
+          <h3 class="text-sm font-bold text-slate-100 uppercase tracking-wide mb-1 flex items-center gap-2">
+            <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            Interactive Testing Engine
+          </h3>
+          <p class="text-xs text-slate-400">Enter a binary string to test packet acceptance step-by-step.</p>
+        </div>
+
+        <div class="space-y-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1.5">Packet Binary Input Header</label>
+            <div class="relative">
+              <input type="text" id="binary-input" value="101011" placeholder="e.g. 101001" 
+                     class="w-full bg-slate-950 border border-slate-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-xl px-4 py-2.5 font-mono text-lg text-slate-100 placeholder-slate-600 tracking-widest outline-none transition"
+                     oninput="validateBinaryInput(this)">
+              <div class="absolute right-3 top-2.5 flex space-x-1">
+                <button onclick="setSampleInput('101')" class="px-2 py-0.5 text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700">101</button>
+                <button onclick="setSampleInput('10101')" class="px-2 py-0.5 text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700">10101</button>
+                <button onclick="setSampleInput('0101')" class="px-2 py-0.5 text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700">0101</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step Progress Visualizer -->
+          <div>
+            <div class="flex justify-between text-xs text-slate-400 mb-1">
+              <span>Input Stream Progress</span>
+              <span id="step-counter" class="font-mono">Step 0 / 0</span>
+            </div>
+            <div id="tape-display" class="flex space-x-1.5 overflow-x-auto p-3 bg-slate-950 rounded-xl border border-slate-800/80 min-h-[52px] items-center">
+              <!-- Tape cells injected dynamically -->
+            </div>
+          </div>
+
+          <!-- Control Buttons -->
+          <div class="grid grid-cols-3 gap-2 pt-2">
+            <button id="btn-prev" onclick="stepBackward()" disabled class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-40 rounded-xl text-xs font-semibold flex items-center justify-center space-x-1 transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+              <span>Prev Step</span>
+            </button>
+            <button id="btn-next" onclick="stepForward()" class="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold flex items-center justify-center space-x-1 shadow-lg shadow-blue-600/20 transition">
+              <span>Next Step</span>
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+            </button>
+            <button id="btn-play" onclick="toggleAutoPlay()" class="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold flex items-center justify-center space-x-1 shadow-lg shadow-emerald-600/20 transition">
+              <span id="play-text">Auto Run</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Realtime Log trace -->
+        <div class="border-t border-slate-800 pt-4">
+          <div class="text-xs font-semibold text-slate-400 mb-2 flex justify-between">
+            <span>Execution Trace Log</span>
+            <button onclick="resetSimulation()" class="text-indigo-400 hover:underline text-[11px]">Reset</button>
+          </div>
+          <div id="execution-trace" class="font-mono text-[11px] bg-slate-950 rounded-xl p-3 h-28 overflow-y-auto space-y-1 text-slate-400 border border-slate-800/60 scrollbar-thin">
+            <p class="text-slate-600 italic">&gt; Initialized. Click "Next Step" or "Auto Run".</p>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Automated Batch Validation Suite -->
+    <section class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h3 class="font-bold text-slate-100 text-sm uppercase tracking-wide">Automated Test Case Suite</h3>
+          <p class="text-xs text-slate-400">Verifies boundary conditions and requirement compliance.</p>
+        </div>
+        <button onclick="runBatchTests()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-indigo-600/20 transition flex items-center space-x-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          <span>Run All Tests</span>
+        </button>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="test-cases-grid">
+        <!-- Test cases populated via JS -->
+      </div>
+    </section>
+
+    <!-- Formal Specification & State Table -->
+    <section id="theory-section" class="grid grid-cols-1 md:grid-cols-2 gap-8">
+      
+      <!-- Transition Table -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+        <h3 class="font-bold text-slate-100 text-sm uppercase tracking-wide mb-4 flex items-center space-x-2">
+          <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          <span>State Transition Table δ(q, σ)</span>
+        </h3>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left font-mono text-xs text-slate-300">
+            <thead class="bg-slate-950 text-slate-400 border-b border-slate-800">
+              <tr>
+                <th class="p-3">State</th>
+                <th class="p-3">Input '0'</th>
+                <th class="p-3">Input '1'</th>
+                <th class="p-3">Description / Meaning</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800/60">
+              <tr class="hover:bg-slate-800/40">
+                <td class="p-3 font-bold text-blue-400">→ q0</td>
+                <td class="p-3 text-rose-400">qd</td>
+                <td class="p-3 text-emerald-400">q1</td>
+                <td class="p-3 text-slate-400">Initial state; waiting for '1'</td>
+              </tr>
+              <tr class="hover:bg-slate-800/40">
+                <td class="p-3 font-bold text-blue-400">q1</td>
+                <td class="p-3 text-emerald-400">q2</td>
+                <td class="p-3 text-rose-400">qd</td>
+                <td class="p-3 text-slate-400">Seen '1'; waiting for '0'</td>
+              </tr>
+              <tr class="hover:bg-slate-800/40">
+                <td class="p-3 font-bold text-blue-400">q2</td>
+                <td class="p-3 text-rose-400">qd</td>
+                <td class="p-3 text-emerald-400">q3</td>
+                <td class="p-3 text-slate-400">Seen '10'; waiting for '1'</td>
+              </tr>
+              <tr class="hover:bg-slate-800/40 bg-emerald-950/20">
+                <td class="p-3 font-bold text-emerald-400">* q3</td>
+                <td class="p-3 text-emerald-400">q3</td>
+                <td class="p-3 text-emerald-400">q3</td>
+                <td class="p-3 text-slate-300">Accepting state (Prefix '101' matched)</td>
+              </tr>
+              <tr class="hover:bg-slate-800/40 bg-rose-950/20">
+                <td class="p-3 font-bold text-rose-400">qd</td>
+                <td class="p-3 text-rose-400">qd</td>
+                <td class="p-3 text-rose-400">qd</td>
+                <td class="p-3 text-slate-400">Dead / Trap state (Prefix failed)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 5-Tuple Definition -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+        <h3 class="font-bold text-slate-100 text-sm uppercase tracking-wide flex items-center space-x-2">
+          <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+          <span>5-Tuple Formal Definition</span>
+        </h3>
+        <p class="text-xs text-slate-300 leading-relaxed">
+          The automaton is defined formally as <code class="text-indigo-400 font-mono">M = (Q, Σ, δ, q₀, F)</code>:
+        </p>
+        <ul class="text-xs font-mono space-y-2 text-slate-300 bg-slate-950 p-4 rounded-xl border border-slate-800/80">
+          <li><strong class="text-blue-400">Q (States)</strong> = { q0, q1, q2, q3, qd }</li>
+          <li><strong class="text-blue-400">Σ (Alphabet)</strong> = { 0, 1 }</li>
+          <li><strong class="text-blue-400">q₀ (Start State)</strong> = q0</li>
+          <li><strong class="text-blue-400">F (Final States)</strong> = { q3 }</li>
+          <li><strong class="text-blue-400">Language L(M)</strong> = { w ∈ {0,1}* | w = 101x, x ∈ {0,1}* }</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- JFLAP XML Source Viewer & Exporter -->
+    <section id="jflap-section" class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <h3 class="font-bold text-slate-100 text-sm uppercase tracking-wide">JFLAP XML Structure Code</h3>
+          <p class="text-xs text-slate-400">Matches the exact XML structure of your problem statement.</p>
+        </div>
+        <button onclick="copyJflapXml()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-medium border border-slate-700 transition flex items-center space-x-1.5">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 012-2v-8a2 2 0 01-2-2h-8a2 2 0 01-2 2v8a2 2 0 012 2z"/></svg>
+          <span id="copy-btn-text">Copy XML</span>
+        </button>
+      </div>
+
+      <pre class="bg-slate-950 p-4 rounded-xl text-xs text-emerald-400 font-mono overflow-x-auto max-h-56 border border-slate-800/80 scrollbar-thin"><code id="xml-code-block">&lt;?xml version="1.0" encoding="UTF-8" standalone="no"?&gt;
+&lt;structure&gt;
+  &lt;type&gt;fa&lt;/type&gt;
+  &lt;automaton&gt;
+    &lt;state id="0" name="q0"&gt;
+      &lt;x&gt;100.0&lt;/x&gt;&lt;y&gt;150.0&lt;/y&gt;
+      &lt;initial/&gt;
+    &lt;/state&gt;
+    &lt;state id="1" name="q1"&gt;
+      &lt;x&gt;250.0&lt;/x&gt;&lt;y&gt;150.0&lt;/y&gt;
+    &lt;/state&gt;
+    &lt;state id="2" name="q2"&gt;
+      &lt;x&gt;400.0&lt;/x&gt;&lt;y&gt;150.0&lt;/y&gt;
+    &lt;/state&gt;
+    &lt;state id="3" name="q3"&gt;
+      &lt;x&gt;550.0&lt;/x&gt;&lt;y&gt;150.0&lt;/y&gt;
+      &lt;final/&gt;
+    &lt;/state&gt;
+    &lt;state id="4" name="qd"&gt;
+      &lt;x&gt;325.0&lt;/x&gt;&lt;y&gt;300.0&lt;/y&gt;
+    &lt;/state&gt;
+    &lt;transition&gt;&lt;from&gt;0&lt;/from&gt;&lt;to&gt;1&lt;/to&gt;&lt;read&gt;1&lt;/read&gt;&lt;/transition&gt;
+    &lt;transition&gt;&lt;from&gt;0&lt;/from&gt;&lt;to&gt;4&lt;/to&gt;&lt;read&gt;0&lt;/read&gt;&lt;/transition&gt;
+    &lt;transition&gt;&lt;from&gt;1&lt;/from&gt;&lt;to&gt;2&lt;/to&gt;&lt;read&gt;0&lt;/read&gt;&lt;/transition&gt;
+    &lt;transition&gt;&lt;from&gt;1&lt;/from&gt;&lt;to&gt;4&lt;/to&gt;&lt;read&gt;1&lt;/read&gt;&lt;/transition&gt;
+    &lt;transition&gt;&lt;from&gt;2&lt;/from&gt;&lt;to&gt;3&lt;/to&gt;&lt;read&gt;1&lt;/read&gt;&lt;/transition&gt;
+    &lt;transition&gt;&lt;from&gt;2&lt;/from&gt;&lt;to&gt;4&lt;/to&gt;&lt;read&gt;0&lt;/read&gt;&lt;/transition&gt;
+    &lt;transition&gt;&lt;from&gt;3&lt;/from&gt;&lt;to&gt;3&lt;/to&gt;&lt;read&gt;0&lt;/read&gt;&lt;/transition&gt;
+    &lt;transition&gt;&lt;from&gt;3&lt;/from&gt;&lt;to&gt;3&lt;/to&gt;&lt;read&gt;1&lt;/read&gt;&lt;/transition&gt;
+    &lt;transition&gt;&lt;from&gt;4&lt;/from&gt;&lt;to&gt;4&lt;/to&gt;&lt;read&gt;0&lt;/read&gt;&lt;/transition&gt;
+    &lt;transition&gt;&lt;from&gt;4&lt;/from&gt;&lt;to&gt;4&lt;/to&gt;&lt;read&gt;1&lt;/read&gt;&lt;/transition&gt;
+  &lt;/automaton&gt;
+&lt;/structure&gt;</code></pre>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-slate-800 bg-slate-900/50 py-6">
+    <div class="max-w-7xl mx-auto px-4 text-center text-xs text-slate-500">
+      Prefix 101 Network Packet Router DFA Simulation • Standalone Client Web Application
+    </div>
+  </footer>
+
+  <script>
+    // State machine dictionary
+    const DFA = {
+      states: { 0: 'q0', 1: 'q1', 2: 'q2', 3: 'q3', 4: 'qd' },
+      startState: 0,
+      finalStates: [3],
+      transitions: {
+        0: { '1': 1, '0': 4 },
+        1: { '0': 2, '1': 4 },
+        2: { '1': 3, '0': 4 },
+        3: { '0': 3, '1': 3 },
+        4: { '0': 4, '1': 4 }
+      }
+    };
+
+    // State variables
+    let inputString = "101011";
+    let currentStep = 0;
+    let autoPlayInterval = null;
+
+    const defaultTestCases = [
+      { input: "101", expected: true, desc: "Minimal Prefix Match" },
+      { input: "101001", expected: true, desc: "Valid Header + Payload" },
+      { input: "101111", expected: true, desc: "Valid Header + Payload '111'" },
+      { input: "0101", expected: false, desc: "Starts with '0' (Rejected)" },
+      { input: "1101", expected: false, desc: "Prefix '11' (Rejected)" },
+      { input: "1001", expected: false, desc: "Prefix '100' (Rejected)" },
+      { input: "", expected: false, desc: "Empty Packet Header" },
+      { input: "10", expected: false, desc: "Incomplete Prefix" }
+    ];
+
+    // Initialization
+    window.onload = function() {
+      renderTape();
+      updateVisualization();
+      runBatchTests();
+    };
+
+    function validateBinaryInput(inputEl) {
+      inputEl.value = inputEl.value.replace(/[^01]/g, '');
+      inputString = inputEl.value;
+      resetSimulation();
+    }
+
+    function setSampleInput(str) {
+      document.getElementById('binary-input').value = str;
+      inputString = str;
+      resetSimulation();
+    }
+
+    function resetSimulation() {
+      stopAutoPlay();
+      currentStep = 0;
+      renderTape();
+      updateVisualization();
+      
+      const trace = document.getElementById('execution-trace');
+      trace.innerHTML = `<p class="text-slate-600 italic">&gt; Simulation reset. Ready for input "${inputString}".</p>`;
+    }
+
+    function renderTape() {
+      const tapeDisplay = document.getElementById('tape-display');
+      tapeDisplay.innerHTML = '';
+
+      if (inputString.length === 0) {
+        tapeDisplay.innerHTML = `<span class="text-xs text-slate-500 italic">Empty string ε</span>`;
+        document.getElementById('step-counter').innerText = `Step 0 / 0`;
+        return;
+      }
+
+      for (let i = 0; i < inputString.length; i++) {
+        const char = inputString[i];
+        const cell = document.createElement('div');
+        
+        let bgColor = "bg-slate-900 text-slate-300 border-slate-800";
+        if (i < currentStep) {
+          bgColor = "bg-slate-800 text-slate-400 border-slate-700";
+        } else if (i === currentStep) {
+          bgColor = "bg-blue-600 text-white font-bold border-blue-400 scale-110 shadow-md";
+        }
+
+        cell.className = `w-8 h-8 flex items-center justify-center rounded-lg border text-sm font-mono transition-all ${bgColor}`;
+        cell.innerText = char;
+        tapeDisplay.appendChild(cell);
+      }
+
+      document.getElementById('step-counter').innerText = `Step ${currentStep} / ${inputString.length}`;
+    }
+
+    function getCurrentStateAndHistory() {
+      let state = DFA.startState;
+      let history = [state];
+
+      for (let i = 0; i < currentStep; i++) {
+        const char = inputString[i];
+        if (char !== undefined && DFA.transitions[state] && DFA.transitions[state][char] !== undefined) {
+          state = DFA.transitions[state][char];
+          history.push(state);
+        }
+      }
+      return { currentState: state, history };
+    }
+
+    function stepForward() {
+      if (currentStep < inputString.length) {
+        const prevResult = getCurrentStateAndHistory();
+        const readChar = inputString[currentStep];
+        
+        currentStep++;
+        const newResult = getCurrentStateAndHistory();
+
+        appendTraceLog(prevResult.currentState, readChar, newResult.currentState, currentStep);
+        renderTape();
+        updateVisualization();
+      } else {
+        stopAutoPlay();
+      }
+    }
+
+    function stepBackward() {
+      if (currentStep > 0) {
+        currentStep--;
+        renderTape();
+        updateVisualization();
+      }
+    }
+
+    function toggleAutoPlay() {
+      if (autoPlayInterval) {
+        stopAutoPlay();
+      } else {
+        if (currentStep >= inputString.length) {
+          resetSimulation();
+        }
+        document.getElementById('play-text').innerText = "Pause";
+        autoPlayInterval = setInterval(() => {
+          if (currentStep < inputString.length) {
+            stepForward();
+          } else {
+            stopAutoPlay();
+          }
+        }, 750);
+      }
+    }
+
+    function stopAutoPlay() {
+      if (autoPlayInterval) {
+        clearInterval(autoPlayInterval);
+        autoPlayInterval = null;
+      }
+      document.getElementById('play-text').innerText = "Auto Run";
+    }
+
+    function appendTraceLog(fromState, char, toState, step) {
+      const trace = document.getElementById('execution-trace');
+      const p = document.createElement('p');
+      p.className = "text-slate-300";
+      
+      const fromName = DFA.states[fromState];
+      const toName = DFA.states[toState];
+      
+      p.innerHTML = `<span class="text-slate-500">[Step ${step}]</span> δ(<span class="text-blue-400">${fromName}</span>, '<span class="text-amber-300">${char}</span>') ➔ <span class="text-indigo-400 font-bold">${toName}</span>`;
+      
+      trace.appendChild(p);
+      trace.scrollTop = trace.scrollHeight;
+    }
+
+    function updateVisualization() {
+      const { currentState, history } = getCurrentStateAndHistory();
+      const stateName = DFA.states[currentState];
+
+      // Update state nodes styling
+      Object.keys(DFA.states).forEach(st => {
+        const circle = document.getElementById(`circle-${st}`);
+        const group = document.getElementById(`node-${st}`);
+        
+        if (circle) {
+          if (parseInt(st) === currentState) {
+            group.classList.add('active');
+            circle.setAttribute('stroke', '#3b82f6');
+            circle.setAttribute('stroke-width', '3.5');
+          } else {
+            group.classList.remove('active');
+            const defaultColor = st == 3 ? '#10b981' : (st == 4 ? '#f43f5e' : '#64748b');
+            circle.setAttribute('stroke', defaultColor);
+            circle.setAttribute('stroke-width', '2');
+          }
+        }
+      });
+
+      // Highlight active transition path if step > 0
+      document.querySelectorAll('.transition-path').forEach(p => p.classList.remove('active'));
+      if (currentStep > 0 && history.length >= 2) {
+        const fromSt = history[history.length - 2];
+        const toSt = history[history.length - 1];
+        const activePath = document.getElementById(`tr-${fromSt}-${toSt}`);
+        if (activePath) {
+          activePath.classList.add('active');
+        }
+      }
+
+      // Update UI Status Labels
+      document.getElementById('current-state-display').innerText = stateName;
+      const decisionBadge = document.getElementById('decision-badge');
+
+      const isFinalStep = currentStep === inputString.length;
+      const isAccepted = DFA.finalStates.includes(currentState);
+
+      if (isFinalStep) {
+        if (isAccepted) {
+          decisionBadge.className = "px-2.5 py-1 rounded text-xs bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold";
+          decisionBadge.innerText = "PACKET FORWARDED (ACCEPTED)";
+        } else {
+          decisionBadge.className = "px-2.5 py-1 rounded text-xs bg-rose-500/20 text-rose-400 border border-rose-500/30 font-bold";
+          decisionBadge.innerText = "PACKET REJECTED / DISCARDED";
+        }
+      } else {
+        decisionBadge.className = "px-2 py-0.5 rounded text-[11px] bg-blue-500/10 text-blue-400 border border-blue-500/20 font-semibold";
+        decisionBadge.innerText = "INSPECTING HEADER...";
+      }
+
+      // Disable buttons condition
+      document.getElementById('btn-prev').disabled = currentStep === 0;
+      document.getElementById('btn-next').disabled = currentStep === inputString.length;
+    }
+
+    // Evaluate input string without UI side effects
+    function testStringAcceptance(str) {
+      let state = DFA.startState;
+      for (let i = 0; i < str.length; i++) {
+        const char = str[i];
+        if (DFA.transitions[state] && DFA.transitions[state][char] !== undefined) {
+          state = DFA.transitions[state][char];
+        } else {
+          return false;
+        }
+      }
+      return DFA.finalStates.includes(state);
+    }
+
+    function runBatchTests() {
+      const container = document.getElementById('test-cases-grid');
+      container.innerHTML = '';
+
+      defaultTestCases.forEach((tc) => {
+        const actual = testStringAcceptance(tc.input);
+        const passed = actual === tc.expected;
+
+        const card = document.createElement('div');
+        card.className = `p-3.5 rounded-xl border flex flex-col justify-between ${
+          passed ? 'bg-slate-950/60 border-slate-800' : 'bg-rose-950/20 border-rose-800/50'
+        }`;
+
+        card.innerHTML = `
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <span class="font-mono text-sm font-bold text-slate-200">"${tc.input}"</span>
+              <span class="text-[10px] px-2 py-0.5 rounded font-bold ${
+                actual 
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                  : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+              }">
+                ${actual ? 'ACCEPTED' : 'REJECTED'}
+              </span>
+            </div>
+            <p class="text-[11px] text-slate-400">${tc.desc}</p>
+          </div>
+          <div class="mt-2 text-[10px] text-slate-500 flex items-center justify-between border-t border-slate-800/60 pt-1.5">
+            <span>Expected: ${tc.expected ? 'Accept' : 'Reject'}</span>
+            <span class="${passed ? 'text-emerald-400' : 'text-rose-400'} font-semibold">${passed ? '✓ Test Passed' : '✗ Test Failed'}</span>
+          </div>
+        `;
+
+        container.appendChild(card);
+      });
+    }
+
+    function copyJflapXml() {
+      const xmlText = document.getElementById('xml-code-block').innerText;
+      
+      const textarea = document.createElement('textarea');
+      textarea.value = xmlText;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+
+      const btnText = document.getElementById('copy-btn-text');
+      btnText.innerText = "Copied!";
+      setTimeout(() => { btnText.innerText = "Copy XML"; }, 2000);
+    }
+
+    function scrollToSection(id) {
+      document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+    }
+  </script>
+</body>
+</html>
